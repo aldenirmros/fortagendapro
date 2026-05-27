@@ -404,6 +404,19 @@
       <span id="gcal-status-badge" class="badge badge-gray">-</span>
     </div>
 
+    <!-- Toggle Cal_Sync -->
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#F8FAFF;border:1px solid var(--border);border-radius:10px;padding:.85rem 1rem;margin-bottom:1rem">
+      <div>
+        <div style="font-size:.85rem;font-weight:600;color:var(--text)">Sincronizar ao criar eventos</div>
+        <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Envia automaticamente novos eventos para o Google Agenda</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0;cursor:pointer">
+        <input type="checkbox" id="gcal-sync-toggle" style="opacity:0;width:0;height:0;position:absolute">
+        <span id="gcal-sync-slider" style="position:absolute;inset:0;background:#CBD5E1;border-radius:99px;transition:.2s;cursor:pointer"></span>
+        <span id="gcal-sync-knob"   style="position:absolute;left:3px;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s;cursor:pointer"></span>
+      </label>
+    </div>
+
     <!-- Como funciona -->
     <div style="background:#F8FAFF;border-radius:10px;padding:.9rem;margin-bottom:1rem;border:1px solid var(--border)">
       <div style="font-size:.78rem;font-weight:700;color:var(--accent);margin-bottom:.5rem">Como funciona a integracao</div>
@@ -892,13 +905,28 @@ function abrirModalGCal(){
   abrirOverlay('m-gcal');
   // Mostra ID salvo na sessao (se houver)
   var calId=S.sessao.calendarId||'';
+  var calSync=S.sessao.calSync||false;
   $('gcal-id-input').value=calId;
+
+  // Toggle Cal_Sync visual
+  var toggle=$('gcal-sync-toggle');
+  var slider=$('gcal-sync-slider');
+  var knob=$('gcal-sync-knob');
+  toggle.checked=calSync;
+  slider.style.background=calSync?'var(--green)':'#CBD5E1';
+  knob.style.left=calSync?'21px':'3px';
+  toggle.onchange=function(){
+    var v=toggle.checked;
+    slider.style.background=v?'var(--green)':'#CBD5E1';
+    knob.style.left=v?'21px':'3px';
+  };
+
   if(calId){
     $('gcal-status-card').className='gcal-card linked';
     $('gcal-status-txt').textContent='Agenda vinculada';
     $('gcal-status-sub').textContent=calId;
     $('gcal-status-badge').className='badge badge-green';
-    $('gcal-status-badge').textContent='Ativo';
+    $('gcal-status-badge').textContent=calSync?'Sync ativo':'Sync inativo';
   } else {
     $('gcal-status-card').className='gcal-card';
     $('gcal-status-txt').textContent='Sem agenda vinculada';
@@ -910,12 +938,14 @@ function abrirModalGCal(){
 
 function salvarCalendarId(){
   var calId=$('gcal-id-input').value.trim();
-  api('atualizarUsuario',{id:S.sessao.id, calendarId:calId},S.sessao.token)
+  var calSync=$('gcal-sync-toggle').checked;
+  api('atualizarUsuario',{id:S.sessao.id, calendarId:calId, calSync:calSync},S.sessao.token)
     .then(function(r){
       if(r.ok){
         S.sessao.calendarId=calId;
+        S.sessao.calSync=calSync;
         sessionStorage.setItem('fap_sessao',JSON.stringify(S.sessao));
-        toast('ID do calendario salvo!','ok');
+        toast('Configuracoes salvas!','ok');
         abrirModalGCal();
       } else toast(r.msg,'err');
     });
