@@ -442,7 +442,7 @@ var GAS_URL = 'https://script.google.com/macros/s/AKfycbzJXqOrla9paJguw_fDkUCucv
 
 // ══ ESTADO ═══════════════════════════════════════════════════
 var S = {
-  sessao: null, semana: 0, eventos: [],
+  sessao: null, semana: 0, eventos: [], eventosGCal: [],
   filtros: {}, corSel: '#1D4ED8', view: 'agenda',
 };
 var DIAS  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
@@ -614,12 +614,29 @@ function atualizarNowLine(){
 function carregarEventos(){
   var dias=getDias();
   loading(true);
-  api('listarEventos',{dataInicio:fmt(dias[0]),dataFim:fmt(dias[6])},S.sessao.token)
+  // Limpa eventos do GCal ao trocar semana (serão recarregados se usuario quiser)
+  S.eventosGCal = S.eventosGCal || [];
+  // Filtra GCal para manter apenas da semana atual
+  var di=fmt(dias[0]), df=fmt(dias[6]);
+  S.eventosGCal = (S.eventosGCal||[]).filter(function(e){
+    return e.dataInicio>=di && e.dataInicio<=df;
+  });
+  api('listarEventos',{dataInicio:di,dataFim:df},S.sessao.token)
     .then(function(r){
-      if(r.ok){S.eventos=r.dados||[];renderizarEventos();}
+      if(r.ok){
+        S.eventos=r.dados||[];
+        renderizarEventos();
+        // Debug: mostra quantos eventos carregou
+        console.log('[FortAgendaPro] Eventos carregados:', S.eventos.length, '| GCal:', (S.eventosGCal||[]).length);
+      }
       else toast(r.msg,'err');
     })
     .finally(function(){loading(false);});
+}
+
+function parseHora(h){
+  if(!h||typeof h!=='string') return 0;
+  var p=h.split(':'); return (+p[0]||0)*60+(+p[1]||0);
 }
 
 function renderizarEventos(){
@@ -627,17 +644,24 @@ function renderizarEventos(){
     var c=$('col-'+fmt(d));
     if(c){c.innerHTML='';c.style.position='absolute';}
   });
+  // Combina eventos da planilha + Google Calendar
+  var todos = S.eventos.concat(S.eventosGCal||[]);
   var filtroAtivo=Object.keys(S.filtros).length>0;
-  var evs=filtroAtivo?S.eventos.filter(function(e){return S.filtros[e.tipo];}):S.eventos;
+  var evs=filtroAtivo?todos.filter(function(e){return S.filtros[e.tipo];}):todos;
   var porDia={};
-  evs.forEach(function(e){if(!porDia[e.dataInicio])porDia[e.dataInicio]=[];porDia[e.dataInicio].push(e);});
+  evs.forEach(function(e){
+    if(!e.dataInicio) return;
+    if(!porDia[e.dataInicio])porDia[e.dataInicio]=[];
+    porDia[e.dataInicio].push(e);
+  });
   Object.keys(porDia).forEach(function(data){
     var colEl=$('col-'+data); if(!colEl)return;
     var blocos=porDia[data].map(function(ev){
-      var p1=ev.horaInicio.split(':'),h1=+p1[0],m1=+p1[1];
-      var p2=ev.horaFim.split(':'),h2=+p2[0],m2=+p2[1];
-      var top=(h1*60+m1)/60*HH;
-      var height=Math.max(((h2*60+m2)-(h1*60+m1))/60*HH,24);
+      var ini=parseHora(ev.horaInicio);
+      var fim=parseHora(ev.horaFim);
+      if(fim<=ini) fim=ini+60; // fallback 1h
+      var top=ini/60*HH;
+      var height=Math.max((fim-ini)/60*HH,24);
       return{ev:ev,top:top,height:height,col:0};
     });
     var cols=[];
@@ -868,14 +892,33 @@ function sincronizarGCal(){
   },S.sessao.token)
   .then(function(r){
     if(r.ok){
-      var externos=(r.dados||[]).filter(function(e){
-        return !S.eventos.find(function(x){return x.id===e.id;});
+      // Normaliza campos do GCal para o mesmo formato dos eventos da planilha
+      var novos=(r.dados||[]).map(function(e){
+        return {
+          id:          e.id||e.getId&&e.getId()||'gcal-'+Math.random(),
+          titulo:      e.titulo||e.title||'Evento Google',
+          descricao:   e.descricao||e.description||'',
+          dataInicio:  e.dataInicio||'',
+          horaInicio:  e.horaInicio||'00:00',
+          dataFim:     e.dataFim||e.dataInicio||'',
+          horaFim:     e.horaFim||'01:00',
+          cor:         '#DC2626',
+          tipo:        'Google Calendar',
+          proprietarioId:   S.sessao.id,
+          proprietarioNome: S.sessao.nome,
+          origem:      'gcal',
+        };
       });
-      S.eventos=S.eventos.concat(externos);
+      // Substitui eventos GCal anteriores pelos novos
+      S.eventosGCal = novos;
       renderizarEventos();
       fecharModal('m-gcal');
-      toast(externos.length+' evento(s) importado(s) do Google','ok');
-    } else toast(r.msg,'err');
+      toast(novos.length+' evento(s) importado(s) do Google','ok');
+      console.log('[FortAgendaPro] Eventos GCal:', novos);
+    } else {
+      console.error('[FortAgendaPro] Erro GCal:', r.msg);
+      toast('Erro: '+r.msg,'err');
+    }
   });
 }
 
