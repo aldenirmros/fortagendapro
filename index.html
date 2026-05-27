@@ -430,9 +430,10 @@
     </div>
 
     <!-- ID do Calendario -->
-    <label class="flabel">ID do Calendario Google (opcional)</label>
-    <input id="gcal-id-input" type="text" class="finput" style="margin-bottom:.4rem" placeholder="Ex: seu@gmail.com ou ID do calendario secundario"/>
-    <div style="font-size:.72rem;color:var(--muted);margin-bottom:1rem">Deixe vazio para usar o calendario principal da conta Google do Apps Script</div>
+    <label class="flabel">ID do Calendario Google</label>
+    <input id="gcal-id-input" type="text" class="finput" style="margin-bottom:.4rem" placeholder="Ex: seuemail@gmail.com"/>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:.3rem">Use apenas o <strong>e-mail</strong> da conta Google (ex: <code>aldenir@fortsunbrasil.com</code>).<br>Não cole a URL do Google Agenda — só o e-mail.</div>
+    <div id="gcal-id-preview" style="font-size:.72rem;color:var(--green);margin-bottom:.85rem;display:none"></div>
 
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
       <button onclick="salvarCalendarId()" class="tbtn solid">Salvar ID</button>
@@ -921,8 +922,14 @@ function abrirModalGCal(){
     knob.style.left=v?'21px':'3px';
   };
 
-  if(calId){
-    $('gcal-status-card').className='gcal-card linked';
+  // Live preview ao colar URL
+  $('gcal-id-input').oninput = function(){
+    var raw=$('gcal-id-input').value.trim();
+    var extracted=sanitizeCalId(raw);
+    var prev=$('gcal-id-preview');
+    if(extracted && extracted!==raw){ prev.textContent='✓ Será salvo como: '+extracted; prev.style.display='block'; }
+    else prev.style.display='none';
+  };
     $('gcal-status-txt').textContent='Agenda vinculada';
     $('gcal-status-sub').textContent=calId;
     $('gcal-status-badge').className='badge badge-green';
@@ -936,9 +943,23 @@ function abrirModalGCal(){
   }
 }
 
+// Extrai o ID real de uma URL do Google Calendar colada pelo usuario
+function sanitizeCalId(raw){
+  var s=(raw||'').trim();
+  var m=s.match(/[?&](src|cid)=([^&]+)/i);
+  if(m){ try{return decodeURIComponent(m[2]);}catch(e){return m[2];} }
+  if(s.indexOf('%')>=0){ try{return decodeURIComponent(s);}catch(e){} }
+  return s;
+}
+
 function salvarCalendarId(){
-  var calId=$('gcal-id-input').value.trim();
+  var raw=$('gcal-id-input').value.trim();
+  var calId=sanitizeCalId(raw);
   var calSync=$('gcal-sync-toggle').checked;
+  // Mostra preview se extraiu diferente do que foi digitado
+  var prev=$('gcal-id-preview');
+  if(calId && calId!==raw){ prev.textContent='ID extraído: '+calId; prev.style.display='block'; }
+  else prev.style.display='none';
   api('atualizarUsuario',{id:S.sessao.id, calendarId:calId, calSync:calSync},S.sessao.token)
     .then(function(r){
       if(r.ok){
