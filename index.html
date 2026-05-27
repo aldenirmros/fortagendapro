@@ -198,7 +198,7 @@
   <div class="lcard">
     <div class="llogo">FortAgendaPro</div>
     <div class="lsub">Sistema de gestão de agenda comercial</div>
-    <div id="lerr" style="display:none;margin-bottom:.9rem;padding:.55rem .8rem;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:.81rem;color:var(--red);word-break:break-word"></div>
+    <div id="lerr" style="display:none;margin-bottom:.9rem;padding:.55rem .8rem;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:.81rem;color:var(--red)"></div>
     <label class="flabel">Usuário</label>
     <input id="l-user" type="text" class="finput" style="margin-bottom:.9rem" placeholder="Usuário" autocomplete="username" autocapitalize="none"/>
     <label class="flabel">Senha</label>
@@ -207,10 +207,6 @@
       <span id="l-txt">Entrar</span>
       <span id="l-spin" style="display:none"><span class="spin" style="border-top-color:var(--accent)"></span></span>
     </button>
-    <button id="l-test" onclick="testarConexao()" style="margin-top:.75rem;width:100%;padding:.4rem;font-size:.75rem;color:#6B7280;background:none;border:1px dashed #D1D5DB;border-radius:7px;cursor:pointer;font-family:inherit">
-      🔍 Testar conexão com o servidor
-    </button>
-    <div id="l-test-res" style="display:none;margin-top:.5rem;padding:.5rem .7rem;border-radius:7px;font-size:.75rem;word-break:break-word"></div>
   </div>
 </div>
 
@@ -408,16 +404,16 @@
       <span id="gcal-status-badge" class="badge badge-gray">-</span>
     </div>
 
-    <!-- Toggle Cal_Sync -->
-    <div style="display:flex;align-items:center;justify-content:space-between;background:#F8FAFF;border:1px solid var(--border);border-radius:10px;padding:.85rem 1rem;margin-bottom:1rem">
+    <!-- Toggle sincronizar ao criar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#F8FAFF;border:1px solid var(--border);border-radius:10px;padding:.8rem 1rem;margin-bottom:1rem">
       <div>
-        <div style="font-size:.85rem;font-weight:600;color:var(--text)">Sincronizar ao criar eventos</div>
-        <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Envia automaticamente novos eventos para o Google Agenda</div>
+        <div style="font-size:.85rem;font-weight:600">Sincronizar ao criar eventos</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.1rem">Envia novos eventos automaticamente para o Google Agenda</div>
       </div>
       <label style="position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0;cursor:pointer">
         <input type="checkbox" id="gcal-sync-toggle" style="opacity:0;width:0;height:0;position:absolute">
-        <span id="gcal-sync-slider" style="position:absolute;inset:0;background:#CBD5E1;border-radius:99px;transition:.2s;cursor:pointer"></span>
-        <span id="gcal-sync-knob"   style="position:absolute;left:3px;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s;cursor:pointer"></span>
+        <span id="gcal-sync-slider" style="position:absolute;inset:0;border-radius:99px;transition:.2s;cursor:pointer"></span>
+        <span id="gcal-sync-knob"   style="position:absolute;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s;cursor:pointer"></span>
       </label>
     </div>
 
@@ -434,10 +430,9 @@
     </div>
 
     <!-- ID do Calendario -->
-    <label class="flabel">ID do Calendario Google</label>
+    <label class="flabel">ID do Calendario Google (opcional)</label>
     <input id="gcal-id-input" type="text" class="finput" style="margin-bottom:.4rem" placeholder="Ex: seuemail@gmail.com"/>
-    <div style="font-size:.72rem;color:var(--muted);margin-bottom:.3rem">Use apenas o <strong>e-mail</strong> da conta Google (ex: <code>aldenir@fortsunbrasil.com</code>).<br>Não cole a URL do Google Agenda — só o e-mail.</div>
-    <div id="gcal-id-preview" style="font-size:.72rem;color:var(--green);margin-bottom:.85rem;display:none"></div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:1rem">Use o e-mail da conta Google (<b>nao cole a URL</b>, apenas o e-mail). Pode colar a URL completa que o sistema extrai automaticamente.</div>
 
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
       <button onclick="salvarCalendarId()" class="tbtn solid">Salvar ID</button>
@@ -484,24 +479,11 @@ function loading(v){ $('loading').className=v?'show':''; }
 function api(action, data, token){
   return fetch(GAS_URL,{
     method:'POST',
-    redirect:'follow',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body:JSON.stringify({action:action, token:token||'', data:data||{}}),
   })
-  .then(function(r){
-    if(!r.ok) throw new Error('Servidor retornou HTTP '+r.status+'. Verifique se o Web App esta publicado.');
-    return r.text();
-  })
-  .then(function(txt){
-    try{ return JSON.parse(txt); }
-    catch(e){
-      // GAS retornou HTML — quase sempre significa que o Web App nao esta autorizado
-      if(txt.indexOf('<html')>=0||txt.indexOf('<!DOCTYPE')>=0)
-        throw new Error('O servidor retornou uma pagina HTML em vez de JSON. Acesse o link do Web App no navegador e autorize o aplicativo, depois tente novamente.');
-      throw new Error('Resposta inesperada: '+txt.substring(0,120));
-    }
-  })
-  .catch(function(e){ return {ok:false, msg: e.message}; });
+  .then(function(r){return r.json();})
+  .catch(function(e){return {ok:false,msg:'Erro de rede: '+e.message};});
 }
 
 // ══ LOGIN ═════════════════════════════════════════════════════
@@ -530,32 +512,6 @@ function fazerLogin(){
       $('l-spin').style.display='none';
       $('l-btn').disabled=false;
     });
-}
-
-function testarConexao(){
-  var btn=$('l-test'), res=$('l-test-res');
-  btn.disabled=true; btn.textContent='Testando...';
-  res.style.display='none';
-  fetch(GAS_URL,{method:'GET',redirect:'follow'})
-    .then(function(r){ return r.text(); })
-    .then(function(txt){
-      try{
-        var j=JSON.parse(txt);
-        res.style.cssText='display:block;background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:7px;padding:.5rem .7rem;font-size:.75rem';
-        res.textContent='✅ Servidor online: '+j.msg;
-      }catch(e){
-        res.style.cssText='display:block;background:#FEF2F2;border:1px solid #FECACA;color:#DC2626;border-radius:7px;padding:.5rem .7rem;font-size:.75rem;word-break:break-word';
-        if(txt.indexOf('<html')>=0||txt.indexOf('<!DOCTYPE')>=0)
-          res.textContent='❌ O Web App retornou uma página HTML. Isso significa que ele ainda não foi autorizado. Abra este link no navegador, autorize e tente novamente: '+GAS_URL;
-        else
-          res.textContent='❌ Resposta inesperada: '+txt.substring(0,200);
-      }
-    })
-    .catch(function(e){
-      res.style.cssText='display:block;background:#FEF2F2;border:1px solid #FECACA;color:#DC2626;border-radius:7px;padding:.5rem .7rem;font-size:.75rem';
-      res.textContent='❌ Erro de rede: '+e.message+'. Verifique a URL do GAS_URL no HTML.';
-    })
-    .finally(function(){ btn.disabled=false; btn.textContent='🔍 Testar conexão com o servidor'; });
 }
 
 function fazerLogout(){
@@ -947,32 +903,20 @@ function excluirUsuario(id){
 function abrirModalGCal(){
   closeSidebar();
   abrirOverlay('m-gcal');
-  // Mostra ID salvo na sessao (se houver)
-  var calId=S.sessao.calendarId||'';
-  var calSync=S.sessao.calSync||false;
-  $('gcal-id-input').value=calId;
-
-  // Toggle Cal_Sync visual
-  var toggle=$('gcal-sync-toggle');
-  var slider=$('gcal-sync-slider');
-  var knob=$('gcal-sync-knob');
-  toggle.checked=calSync;
-  slider.style.background=calSync?'var(--green)':'#CBD5E1';
-  knob.style.left=calSync?'21px':'3px';
-  toggle.onchange=function(){
-    var v=toggle.checked;
-    slider.style.background=v?'var(--green)':'#CBD5E1';
-    knob.style.left=v?'21px':'3px';
+  var calId   = S.sessao.calendarId||'';
+  var calSync = S.sessao.calSync||false;
+  $('gcal-id-input').value = calId;
+  // Toggle visual
+  var sl=$('gcal-sync-slider'), kn=$('gcal-sync-knob'), tg=$('gcal-sync-toggle');
+  tg.checked = calSync;
+  sl.style.background = calSync ? 'var(--green)' : '#CBD5E1';
+  kn.style.left = calSync ? '21px' : '3px';
+  tg.onchange = function(){
+    sl.style.background = tg.checked ? 'var(--green)' : '#CBD5E1';
+    kn.style.left = tg.checked ? '21px' : '3px';
   };
-
-  // Live preview ao colar URL
-  $('gcal-id-input').oninput = function(){
-    var raw=$('gcal-id-input').value.trim();
-    var extracted=sanitizeCalId(raw);
-    var prev=$('gcal-id-preview');
-    if(extracted && extracted!==raw){ prev.textContent='✓ Será salvo como: '+extracted; prev.style.display='block'; }
-    else prev.style.display='none';
-  };
+  if(calId){
+    $('gcal-status-card').className='gcal-card linked';
     $('gcal-status-txt').textContent='Agenda vinculada';
     $('gcal-status-sub').textContent=calId;
     $('gcal-status-badge').className='badge badge-green';
@@ -980,34 +924,28 @@ function abrirModalGCal(){
   } else {
     $('gcal-status-card').className='gcal-card';
     $('gcal-status-txt').textContent='Sem agenda vinculada';
-    $('gcal-status-sub').textContent='Use o calendario principal da conta do Apps Script';
+    $('gcal-status-sub').textContent='Configure o e-mail abaixo';
     $('gcal-status-badge').className='badge badge-gray';
-    $('gcal-status-badge').textContent='Padrao';
+    $('gcal-status-badge').textContent='Inativo';
   }
 }
 
-// Extrai o ID real de uma URL do Google Calendar colada pelo usuario
 function sanitizeCalId(raw){
   var s=(raw||'').trim();
   var m=s.match(/[?&](src|cid)=([^&]+)/i);
-  if(m){ try{return decodeURIComponent(m[2]);}catch(e){return m[2];} }
-  if(s.indexOf('%')>=0){ try{return decodeURIComponent(s);}catch(e){} }
+  if(m){try{return decodeURIComponent(m[2]);}catch(e){return m[2];}}
+  if(s.indexOf('%')>=0){try{return decodeURIComponent(s);}catch(e){}}
   return s;
 }
 
 function salvarCalendarId(){
-  var raw=$('gcal-id-input').value.trim();
-  var calId=sanitizeCalId(raw);
-  var calSync=$('gcal-sync-toggle').checked;
-  // Mostra preview se extraiu diferente do que foi digitado
-  var prev=$('gcal-id-preview');
-  if(calId && calId!==raw){ prev.textContent='ID extraído: '+calId; prev.style.display='block'; }
-  else prev.style.display='none';
+  var calId  = sanitizeCalId($('gcal-id-input').value.trim());
+  var calSync = $('gcal-sync-toggle').checked;
   api('atualizarUsuario',{id:S.sessao.id, calendarId:calId, calSync:calSync},S.sessao.token)
     .then(function(r){
       if(r.ok){
-        S.sessao.calendarId=calId;
-        S.sessao.calSync=calSync;
+        S.sessao.calendarId = calId;
+        S.sessao.calSync    = calSync;
         sessionStorage.setItem('fap_sessao',JSON.stringify(S.sessao));
         toast('Configuracoes salvas!','ok');
         abrirModalGCal();
