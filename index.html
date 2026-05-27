@@ -198,7 +198,7 @@
   <div class="lcard">
     <div class="llogo">FortAgendaPro</div>
     <div class="lsub">Sistema de gestão de agenda comercial</div>
-    <div id="lerr" style="display:none;margin-bottom:.9rem;padding:.55rem .8rem;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:.81rem;color:var(--red)"></div>
+    <div id="lerr" style="display:none;margin-bottom:.9rem;padding:.55rem .8rem;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:.81rem;color:var(--red);word-break:break-word"></div>
     <label class="flabel">Usuário</label>
     <input id="l-user" type="text" class="finput" style="margin-bottom:.9rem" placeholder="Usuário" autocomplete="username" autocapitalize="none"/>
     <label class="flabel">Senha</label>
@@ -207,6 +207,10 @@
       <span id="l-txt">Entrar</span>
       <span id="l-spin" style="display:none"><span class="spin" style="border-top-color:var(--accent)"></span></span>
     </button>
+    <button id="l-test" onclick="testarConexao()" style="margin-top:.75rem;width:100%;padding:.4rem;font-size:.75rem;color:#6B7280;background:none;border:1px dashed #D1D5DB;border-radius:7px;cursor:pointer;font-family:inherit">
+      🔍 Testar conexão com o servidor
+    </button>
+    <div id="l-test-res" style="display:none;margin-top:.5rem;padding:.5rem .7rem;border-radius:7px;font-size:.75rem;word-break:break-word"></div>
   </div>
 </div>
 
@@ -480,11 +484,24 @@ function loading(v){ $('loading').className=v?'show':''; }
 function api(action, data, token){
   return fetch(GAS_URL,{
     method:'POST',
+    redirect:'follow',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body:JSON.stringify({action:action, token:token||'', data:data||{}}),
   })
-  .then(function(r){return r.json();})
-  .catch(function(e){return {ok:false,msg:'Erro de rede: '+e.message};});
+  .then(function(r){
+    if(!r.ok) throw new Error('Servidor retornou HTTP '+r.status+'. Verifique se o Web App esta publicado.');
+    return r.text();
+  })
+  .then(function(txt){
+    try{ return JSON.parse(txt); }
+    catch(e){
+      // GAS retornou HTML — quase sempre significa que o Web App nao esta autorizado
+      if(txt.indexOf('<html')>=0||txt.indexOf('<!DOCTYPE')>=0)
+        throw new Error('O servidor retornou uma pagina HTML em vez de JSON. Acesse o link do Web App no navegador e autorize o aplicativo, depois tente novamente.');
+      throw new Error('Resposta inesperada: '+txt.substring(0,120));
+    }
+  })
+  .catch(function(e){ return {ok:false, msg: e.message}; });
 }
 
 // ══ LOGIN ═════════════════════════════════════════════════════
@@ -513,6 +530,32 @@ function fazerLogin(){
       $('l-spin').style.display='none';
       $('l-btn').disabled=false;
     });
+}
+
+function testarConexao(){
+  var btn=$('l-test'), res=$('l-test-res');
+  btn.disabled=true; btn.textContent='Testando...';
+  res.style.display='none';
+  fetch(GAS_URL,{method:'GET',redirect:'follow'})
+    .then(function(r){ return r.text(); })
+    .then(function(txt){
+      try{
+        var j=JSON.parse(txt);
+        res.style.cssText='display:block;background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:7px;padding:.5rem .7rem;font-size:.75rem';
+        res.textContent='✅ Servidor online: '+j.msg;
+      }catch(e){
+        res.style.cssText='display:block;background:#FEF2F2;border:1px solid #FECACA;color:#DC2626;border-radius:7px;padding:.5rem .7rem;font-size:.75rem;word-break:break-word';
+        if(txt.indexOf('<html')>=0||txt.indexOf('<!DOCTYPE')>=0)
+          res.textContent='❌ O Web App retornou uma página HTML. Isso significa que ele ainda não foi autorizado. Abra este link no navegador, autorize e tente novamente: '+GAS_URL;
+        else
+          res.textContent='❌ Resposta inesperada: '+txt.substring(0,200);
+      }
+    })
+    .catch(function(e){
+      res.style.cssText='display:block;background:#FEF2F2;border:1px solid #FECACA;color:#DC2626;border-radius:7px;padding:.5rem .7rem;font-size:.75rem';
+      res.textContent='❌ Erro de rede: '+e.message+'. Verifique a URL do GAS_URL no HTML.';
+    })
+    .finally(function(){ btn.disabled=false; btn.textContent='🔍 Testar conexão com o servidor'; });
 }
 
 function fazerLogout(){
