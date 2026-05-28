@@ -43,6 +43,21 @@
   .tbtn.solid:hover{background:#EFF6FF}
   .tbtn:disabled{opacity:.5;cursor:not-allowed}
   #period-hdr{font-size:.88rem;font-weight:500;color:#fff;min-width:200px;text-align:center}
+
+  /* ── Agendamento Rápido ── */
+  #aq-wrapper-outer{position:relative;flex:1;max-width:420px;min-width:0}
+  #aq-wrapper{display:flex;align-items:center;flex:1;gap:0;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:9px;overflow:hidden;transition:box-shadow .18s,background .18s}
+  #aq-wrapper:focus-within{background:rgba(255,255,255,.22);box-shadow:0 0 0 3px rgba(255,255,255,.25)}
+  #aq-icon{padding:0 .55rem 0 .7rem;font-size:.95rem;color:rgba(255,255,255,.8);flex-shrink:0;line-height:1;pointer-events:none}
+  #aq-input{flex:1;min-width:0;background:transparent;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:.82rem;font-weight:400;color:#fff;padding:.42rem 0;caret-color:#fff}
+  #aq-input::placeholder{color:rgba(255,255,255,.55);font-size:.79rem}
+  #aq-btn{flex-shrink:0;background:rgba(255,255,255,.2);border:none;border-left:1px solid rgba(255,255,255,.2);color:#fff;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:600;padding:.42rem .75rem;cursor:pointer;transition:background .15s;white-space:nowrap;letter-spacing:.01em}
+  #aq-btn:hover{background:rgba(255,255,255,.32)}
+  #aq-btn:active{background:rgba(255,255,255,.42)}
+  #aq-btn:disabled{opacity:.55;cursor:not-allowed}
+  #aq-tip{display:none;position:absolute;top:calc(100% + 8px);left:0;right:0;background:#1E293B;color:#CBD5E1;font-size:.74rem;border-radius:8px;padding:.6rem .85rem;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.28);pointer-events:none;line-height:1.6}
+  #aq-tip strong{color:#fff}
+  #aq-wrapper-outer:focus-within #aq-tip{display:block}
   .avatar{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.25);
     display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;
     color:#fff;cursor:pointer;flex-shrink:0;border:1.5px solid rgba(255,255,255,.4)}
@@ -235,6 +250,29 @@
     <div id="period-hdr"></div>
     <div style="flex:1"></div>
     <div id="vg-period-hdr" style="display:none;font-size:.88rem;font-weight:600;color:#fff;flex:1;text-align:center"></div>
+
+    <!-- ⚡ Agendamento Rápido -->
+    <div id="aq-wrapper-outer">
+      <div id="aq-wrapper">
+        <span id="aq-icon">⚡</span>
+        <input
+          id="aq-input"
+          type="text"
+          placeholder='Agendar: "Amanhã 10h Reunião"'
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
+          maxlength="120"
+        />
+        <button id="aq-btn" onclick="agendamentoRapido()">⚡ Agendar</button>
+      </div>
+      <div id="aq-tip">
+        <strong>Exemplos:</strong><br>
+        "Amanhã 10h Reunião com João" &nbsp;·&nbsp; "8h ir ao cliente X" &nbsp;·&nbsp; "Em 15 dias Visita B"<br>
+        "Hoje das 14h às 16h Workshop" &nbsp;·&nbsp; "27/06 9h30 Apresentação" &nbsp;·&nbsp; "Em 2 semanas Revisão por 2h"
+      </div>
+    </div>
+
     <button onclick="abrirModalEvento()" class="tbtn solid" id="btn-novo-evento">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Novo evento
@@ -1293,6 +1331,187 @@ window.addEventListener('load',function(){
   if(saved){
     try{S.sessao=JSON.parse(saved);iniciarApp();return;}
     catch(e){sessionStorage.removeItem('fap_sessao');}
+  }
+});
+
+// ============================================================
+//  AGENDAPRO — Módulo: Agendamento Inteligente v1.0
+// ============================================================
+
+function pad(n){return String(n).padStart(2,'0');}
+
+function _hojeStr(){
+  var d=new Date();
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+
+function _addDias(dataStr,dias){
+  var p=dataStr.split('-');
+  var d=new Date(+p[0],+p[1]-1,+p[2]+dias);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+
+function _addMinutos(horaStr,min){
+  var p=horaStr.split(':');
+  var tot=+p[0]*60+ +p[1]+min;
+  if(tot>=1440)tot=1439;
+  return pad(Math.floor(tot/60))+':'+pad(tot%60);
+}
+
+function parseAgendamento(texto){
+  var orig=texto;
+  var s=texto.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .trim();
+
+  var hoje=_hojeStr();
+  var dataInicio=hoje;
+  var horaInicio=null;
+  var horaFim=null;
+  var duracaoMin=60;
+
+  // 1. Range "das Xh às Yh"
+  var mRange=s.match(/das?\s+(\d{1,2})(?:h(\d{2})?|:(\d{2})|(?=\s|$))(?:\s*(?:as|ate|a)\s*)(\d{1,2})(?:h(\d{2})?|:(\d{2}))?/);
+  if(mRange){
+    var hiH=+mRange[1],hiM=mRange[2]?+mRange[2]:(mRange[3]?+mRange[3]:0);
+    var hfH=+mRange[4],hfM=mRange[5]?+mRange[5]:(mRange[6]?+mRange[6]:0);
+    horaInicio=pad(hiH)+':'+pad(hiM);
+    horaFim=pad(hfH)+':'+pad(hfM);
+    s=s.replace(mRange[0],' ');
+  }
+
+  // 2. Data
+  if(/depois\s+de\s+amanha/.test(s)){
+    dataInicio=_addDias(hoje,2);
+    s=s.replace(/depois\s+de\s+amanha/,' ');
+  } else if(/\bamanha\b/.test(s)){
+    dataInicio=_addDias(hoje,1);
+    s=s.replace(/\bamanha\b/,' ');
+  } else if(/\bhoje\b/.test(s)){
+    dataInicio=hoje;
+    s=s.replace(/\bhoje\b/,' ');
+  } else if(/em\s+(\d+)\s+semanas?/.test(s)){
+    var mSem=s.match(/em\s+(\d+)\s+semanas?/);
+    dataInicio=_addDias(hoje,+mSem[1]*7);
+    s=s.replace(mSem[0],' ');
+  } else if(/em\s+(\d+)\s+dias?/.test(s)){
+    var mDias=s.match(/em\s+(\d+)\s+dias?/);
+    dataInicio=_addDias(hoje,+mDias[1]);
+    s=s.replace(mDias[0],' ');
+  } else if(/(\d{2})\/(\d{2})\/(\d{4})/.test(s)){
+    var mDMY=s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    dataInicio=mDMY[3]+'-'+mDMY[2]+'-'+mDMY[1];
+    s=s.replace(mDMY[0],' ');
+  } else if(/(\d{1,2})\/(\d{1,2})(?!\/)/.test(s)){
+    var mDM=s.match(/(\d{1,2})\/(\d{1,2})(?!\/)/);
+    var ano=new Date().getFullYear();
+    dataInicio=ano+'-'+pad(+mDM[2])+'-'+pad(+mDM[1]);
+    s=s.replace(mDM[0],' ');
+  } else if(/\bdia\s+(\d{1,2})\b/.test(s)){
+    var mDia=s.match(/\bdia\s+(\d{1,2})\b/);
+    var agoraD=new Date();
+    var alvo=new Date(agoraD.getFullYear(),agoraD.getMonth(),+mDia[1]);
+    if(alvo<=agoraD)alvo.setMonth(alvo.getMonth()+1);
+    dataInicio=alvo.getFullYear()+'-'+pad(alvo.getMonth()+1)+'-'+pad(alvo.getDate());
+    s=s.replace(mDia[0],' ');
+  }
+
+  // 3. Duração
+  if(!horaFim){
+    var mMin=s.match(/por\s+([\d,.]+)\s*min(?:utos?)?/);
+    if(mMin){
+      duracaoMin=Math.round(parseFloat(mMin[1].replace(',','.')));
+      s=s.replace(mMin[0],' ');
+    } else {
+      var mHoras=s.match(/por\s+([\d,.]+)\s*h(?:oras?)?/);
+      if(mHoras){
+        duracaoMin=Math.round(parseFloat(mHoras[1].replace(',','.'))*60);
+        s=s.replace(mHoras[0],' ');
+      }
+    }
+  }
+
+  // 4. Hora início
+  if(!horaInicio){
+    var mHora=s.match(/\b(\d{1,2})(?:h(\d{2})|:(\d{2}))\b/);
+    if(mHora){
+      horaInicio=pad(+mHora[1])+':'+(mHora[2]||mHora[3]||'00');
+      s=s.replace(mHora[0],' ');
+    } else {
+      var mHs=s.match(/(?:\bas\s+)?(\d{1,2})\s*(?:h(?:oras?)?)\b/);
+      if(mHs){
+        horaInicio=pad(+mHs[1])+':00';
+        s=s.replace(mHs[0],' ');
+      }
+    }
+  }
+
+  // 5. Calcular horaFim
+  if(!horaInicio)horaInicio='08:00';
+  if(!horaFim)horaFim=_addMinutos(horaInicio,duracaoMin);
+
+  // 6. Limpar título
+  var removidos=[
+    /depois\s+de\s+amanh[ãa]/gi,/\bamanh[ãa]\b/gi,/\bhoje\b/gi,
+    /em\s+\d+\s+semanas?/gi,/em\s+\d+\s+dias?/gi,
+    /\d{2}\/\d{2}(?:\/\d{4})?/g,/\bdia\s+\d{1,2}\b/gi,
+    /por\s+[\d,.]+\s*(?:min(?:utos?)?|h(?:oras?)?)/gi,
+    /das?\s+\d{1,2}(?:h\d{2}?|:\d{2})?(?:\s*(?:às|as|ate)\s*\d{1,2}(?:h\d{2}?|:\d{2})?)?/gi,
+    /\b(?:às|as)\s+\d{1,2}\b/gi,/\b\d{1,2}h(?:\d{2})?\b/gi,
+    /\b\d{1,2}:\d{2}\b/g,/\b\d{1,2}\s+h(?:oras?)?\b/gi,
+  ];
+  var titulo=orig;
+  removidos.forEach(function(rx){titulo=titulo.replace(rx,' ');});
+  titulo=titulo.replace(/\s{2,}/g,' ').trim();
+  if(!titulo)titulo='Novo Evento';
+
+  return {dataInicio:dataInicio,horaInicio:horaInicio,dataFim:dataInicio,horaFim:horaFim,titulo:titulo};
+}
+
+function agendamentoRapido(){
+  var input=$('aq-input');
+  var texto=(input?input.value:'').trim();
+  if(!texto){toast('Digite algo para agendar  ex: "Amanhã 10h Reunião cliente"','warn');return;}
+
+  var parsed=parseAgendamento(texto);
+
+  var btn=$('aq-btn');
+  if(btn){btn.disabled=true;btn.textContent='Salvando…';}
+
+  var payload={
+    titulo    :parsed.titulo,
+    descricao :'',
+    dataInicio:parsed.dataInicio,
+    horaInicio:parsed.horaInicio,
+    dataFim   :parsed.dataFim,
+    horaFim   :parsed.horaFim,
+    tipo      :'Reuniao',
+    cor       :'#1D4ED8',
+  };
+
+  api('criarEvento',payload,S.sessao.token)
+    .then(function(r){
+      if(r.ok){
+        var msg='✓ '+parsed.titulo+' — '+parsed.dataInicio+' '+parsed.horaInicio+'–'+parsed.horaFim;
+        if(r.gcalId)msg+=' ✓ Google Agenda';
+        toast(msg,'ok');
+        if(input)input.value='';
+        carregarEventos();
+      } else {
+        toast(r.msg,'err');
+      }
+    })
+    .finally(function(){
+      if(btn){btn.disabled=false;btn.textContent='⚡ Agendar';}
+    });
+}
+
+document.addEventListener('DOMContentLoaded',function(){
+  var aqInput=$('aq-input');
+  if(aqInput){
+    aqInput.addEventListener('keydown',function(e){
+      if(e.key==='Enter')agendamentoRapido();
+    });
   }
 });
 </script>
