@@ -71,7 +71,8 @@
     width:30px;height:30px;border-radius:50%;font-size:.95rem;font-weight:600;
     color:var(--text);margin-top:.1rem}
   .dh-cell.today .dn{background:var(--accent);color:#fff}
-  #scroll-area{flex:1;overflow-y:auto;overflow-x:hidden}
+  #scroll-area{flex:1;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth;cursor:grab}
+  #scroll-area:active{cursor:grabbing}
   #tgrid{display:grid;position:relative}
   .tlabel{font-family:'DM Mono',monospace;font-size:.65rem;color:var(--muted);
     text-align:right;padding:.2rem .45rem 0 0;height:var(--hour-h);
@@ -243,6 +244,7 @@
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
       <button onclick="goToday()" class="tbtn" style="font-size:.78rem">Hoje</button>
+      <button onclick="scrollParaAgora()" class="tbtn" style="font-size:.78rem" title="Ir para hora atual">⊙ Agora</button>
       <button onclick="navSemana(1)" class="tbtn">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
@@ -504,7 +506,9 @@ var DIAS  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 var MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 var CORES = ['#1D4ED8','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2','#EA580C','#475569','#BE185D','#0D9488'];
 var TIPOS = ['Reuniao','Ligacao','Visita','Follow-up','Proposta','Treinamento','Outro'];
-var HH    = 60;
+var HH       = 60;
+var HORA_INI = 8;   // grade começa às 8h
+var HORA_FIM = 18;  // grade termina às 18h
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -582,6 +586,8 @@ function iniciarApp(){
   renderizarGrade();
   carregarEventos();
   setInterval(atualizarNowLine,60000);
+  // Scroll para hora atual ao iniciar
+  setTimeout(function(){ scrollParaAgora(); }, 100);
 }
 
 // ══ FILTROS ═══════════════════════════════════════════════════
@@ -628,7 +634,7 @@ function renderizarGrade(){
   var g=$('tgrid');
   g.style.gridTemplateColumns='50px repeat(7,1fr)';
   g.innerHTML='';
-  for(var h=0;h<24;h++){
+  for(var h=HORA_INI;h<HORA_FIM;h++){
     var lbl=document.createElement('div');
     lbl.className='tlabel';
     lbl.textContent=pad(h)+':00';
@@ -655,7 +661,7 @@ function renderizarGrade(){
 
 function atualizarNowLine(){
   var a=new Date();
-  var top=(a.getHours()*60+a.getMinutes())/60*HH;
+  var top=((a.getHours()*60+a.getMinutes())-(HORA_INI*60))/60*HH;
   var hoje=fmt(a);
   var dias=getDias().map(fmt);
   var idx=dias.indexOf(hoje);
@@ -751,8 +757,11 @@ function renderizarEventos(){
       var ini=parseHora(ev.horaInicio);
       var fim=parseHora(ev.horaFim);
       if(fim<=ini) fim=ini+60; // fallback 1h
-      var top=ini/60*HH;
-      var height=Math.max((fim-ini)/60*HH,24);
+      var offsetMin=HORA_INI*60;
+      var top=Math.max(ini-offsetMin,0)/60*HH;
+      var fimClamped=Math.min(fim,HORA_FIM*60);
+      var iniClamped=Math.max(ini,offsetMin);
+      var height=Math.max((fimClamped-iniClamped)/60*HH,24);
       return{ev:ev,top:top,height:height,col:0};
     });
     var cols=[];
@@ -1206,7 +1215,7 @@ function vgRenderGrade(){
   g.style.gridTemplateColumns = '50px repeat(7,1fr)';
   g.innerHTML = '';
 
-  for(var h=0; h<24; h++){
+  for(var h=HORA_INI; h<HORA_FIM; h++){
     var lbl = document.createElement('div');
     lbl.className = 'tlabel';
     lbl.textContent = pad(h)+':00';
@@ -1229,7 +1238,7 @@ function vgRenderGrade(){
 
   // Now line
   var a = new Date();
-  var top = (a.getHours()*60+a.getMinutes())/60*60;
+  var top = ((a.getHours()*60+a.getMinutes())-(HORA_INI*60))/60*60;
   var hj = fmt(a);
   var dias2 = getDias().map(fmt);
   var idx = dias2.indexOf(hj);
@@ -1281,8 +1290,12 @@ function vgRenderEventos(){
     var blocos = porDia[data].map(function(ev){
       var p1=ev.horaInicio.split(':'), h1=+p1[0], m1=+p1[1];
       var p2=ev.horaFim.split(':'),   h2=+p2[0], m2=+p2[1];
-      var top    = (h1*60+m1)/60*60;
-      var height = Math.max(((h2*60+m2)-(h1*60+m1))/60*60, 22);
+      var offsetMin = HORA_INI*60;
+      var iniMin = h1*60+m1, fimMin = h2*60+m2;
+      var top    = Math.max(iniMin-offsetMin,0)/60*60;
+      var fimClamped = Math.min(fimMin, HORA_FIM*60);
+      var iniClamped = Math.max(iniMin, offsetMin);
+      var height = Math.max((fimClamped-iniClamped)/60*60, 22);
       return { ev:ev, top:top, height:height, col:0 };
     });
 
@@ -1506,12 +1519,75 @@ function agendamentoRapido(){
     });
 }
 
-document.addEventListener('DOMContentLoaded',function(){
-  var aqInput=$('aq-input');
+// ── SCROLL DO GRID ───────────────────────────────────────────
+
+/**
+ * Rola o #scroll-area para que a hora atual fique visível
+ * com uma pequena margem acima. Chamada ao iniciar e pode ser
+ * chamada por um botão "Agora".
+ */
+function scrollParaAgora(){
+  var sa = $('scroll-area');
+  if(!sa) return;
+  var agora = new Date();
+  var minutos = agora.getHours()*60 + agora.getMinutes() - HORA_INI*60;
+  if(minutos < 0) minutos = 0;
+  var top = minutos/60 * HH - 80; // 80px de margem acima
+  sa.scrollTop = Math.max(top, 0);
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  // Enter no campo de agendamento rápido
+  var aqInput = $('aq-input');
   if(aqInput){
-    aqInput.addEventListener('keydown',function(e){
-      if(e.key==='Enter')agendamentoRapido();
+    aqInput.addEventListener('keydown', function(e){
+      if(e.key === 'Enter') agendamentoRapido();
     });
+  }
+
+  // ── Drag-to-scroll no grid ───────────────────────────────
+  var sa = $('scroll-area');
+  if(sa){
+    var isDragging = false;
+    var startY = 0;
+    var startScrollTop = 0;
+
+    sa.addEventListener('mousedown', function(e){
+      // Só arrasta com botão primário e fora de eventos/botões
+      if(e.button !== 0) return;
+      if(e.target.closest('.ev-block, button, input, select')) return;
+      isDragging = true;
+      startY = e.clientY;
+      startScrollTop = sa.scrollTop;
+      sa.style.cursor = 'grabbing';
+      sa.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e){
+      if(!isDragging) return;
+      var dy = e.clientY - startY;
+      sa.scrollTop = startScrollTop - dy;
+    });
+
+    document.addEventListener('mouseup', function(){
+      if(!isDragging) return;
+      isDragging = false;
+      sa.style.cursor = '';
+      sa.style.userSelect = '';
+    });
+
+    // Touch (mobile)
+    sa.addEventListener('touchstart', function(e){
+      if(e.target.closest('.ev-block, button, input')) return;
+      startY = e.touches[0].clientY;
+      startScrollTop = sa.scrollTop;
+    }, {passive: true});
+
+    sa.addEventListener('touchmove', function(e){
+      var dy = e.touches[0].clientY - startY;
+      sa.scrollTop = startScrollTop - dy;
+    }, {passive: true});
   }
 });
 </script>
