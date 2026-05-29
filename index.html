@@ -413,6 +413,13 @@
             <option value="Super Admin">Super Admin</option>
           </select>
         </div>
+        <div><label class="flabel">Time / Equipe</label><input id="nu-time" type="text" class="finput" placeholder="Ex: Time A, Equipe Sul..."/></div>
+        <div><label class="flabel">Supervisor do time?</label>
+          <select id="nu-supervisor" class="finput">
+            <option value="0">Não</option>
+            <option value="1">Sim</option>
+          </select>
+        </div>
       </div>
       <button onclick="criarUsuario()" class="tbtn solid" id="nu-btn">
         <span id="nu-txt">Criar usuario</span>
@@ -579,9 +586,12 @@ function iniciarApp(){
   $('sb-user').textContent='@'+S.sessao.usuario;
   $('sb-badge').textContent=S.sessao.perfil;
   var p=S.sessao.perfil.toLowerCase();
-  if(p==='super admin'||p==='gerente') $('si-equipe').style.display='flex';
-  if(p==='super admin') $('si-usuarios').style.display='flex';
-  if(p==='super admin') $('si-visao').style.display='flex';
+  var isSuperAdmin = p==='super admin';
+  var isSupervisor = S.sessao.supervisor==1 || S.sessao.supervisor===true;
+  if(isSuperAdmin||p==='gerente') $('si-equipe').style.display='flex';
+  if(isSuperAdmin) $('si-usuarios').style.display='flex';
+  // Supervisor de time também acessa a visão geral do seu time
+  if(isSuperAdmin||isSupervisor) $('si-visao').style.display='flex';
   construirFiltros();
   renderizarGrade();
   carregarEventos();
@@ -906,13 +916,16 @@ function carregarListaUsuarios(){
       var usuarios=r.dados||[];
       if(!usuarios.length){$('users-list').innerHTML='<div style="text-align:center;padding:1rem;color:var(--muted);font-size:.83rem">Nenhum usuario cadastrado</div>';return;}
       var perfilBadge={'Super Admin':'badge-blue','Gerente':'badge-yellow','Vendedor':'badge-green'};
-      var html='<table class="utab"><thead><tr><th>Usuario</th><th>Nome</th><th>Perfil</th><th>Acoes</th></tr></thead><tbody>';
+      var html='<table class="utab"><thead><tr><th>Usuario</th><th>Nome</th><th>Perfil</th><th>Time</th><th>Supervisor</th><th>Acoes</th></tr></thead><tbody>';
       usuarios.forEach(function(u){
         var bClass=perfilBadge[u.perfil]||'badge-gray';
+        var supLabel=u.supervisor==1||u.supervisor===true?'<span style="font-size:.7rem;color:var(--accent);font-weight:700">✓ Sim</span>':'<span style="font-size:.7rem;color:var(--muted)">Não</span>';
         html+='<tr>'
           +'<td><strong>'+esc(u.usuario)+'</strong></td>'
           +'<td>'+esc(u.nome)+'</td>'
           +'<td><span class="badge '+bClass+'">'+esc(u.perfil)+'</span></td>'
+          +'<td>'+(u.time?'<span style="font-size:.73rem;background:#EFF6FF;color:var(--accent);padding:.15rem .4rem;border-radius:5px;font-weight:600">'+esc(u.time)+'</span>':'<span style="color:var(--muted);font-size:.73rem">—</span>')+'</td>'
+          +'<td style="text-align:center">'+supLabel+'</td>'
           +'<td>'+(u.id!==S.sessao.id?'<button onclick="excluirUsuario(\''+u.id+'\')" style="font-size:.72rem;color:var(--red);background:none;border:1px solid #FECACA;border-radius:5px;padding:.15rem .4rem;cursor:pointer">Remover</button>':'<span style="font-size:.72rem;color:var(--muted)">Voce</span>')+'</td>'
           +'</tr>';
       });
@@ -931,11 +944,14 @@ function criarUsuario(){
   api('criarUsuario',{
     usuario:user, nome:$('nu-nome').value.trim()||user,
     senha:pass, perfil:$('nu-perfil').value,
+    time:$('nu-time').value.trim(),
+    supervisor:$('nu-supervisor').value,
   },S.sessao.token)
   .then(function(r){
     if(r.ok){
       toast('Usuario criado com sucesso!','ok');
       $('nu-user').value=''; $('nu-nome').value=''; $('nu-pass').value='';
+      $('nu-time').value=''; $('nu-supervisor').value='0';
       carregarListaUsuarios();
     } else toast(r.msg,'err');
   })
@@ -1079,13 +1095,36 @@ function iniciarVisaoGeral(){
   api('listarUsuarios', {}, S.sessao.token)
     .then(function(r){
       if(!r.ok){ toast(r.msg,'err'); return; }
-      VG.usuarios = r.dados || [];
+      var todosUsuarios = r.dados || [];
+
+      // ── FILTRO POR TIME ──────────────────────────────────────
+      // Super Admin vê todos. Supervisor vê apenas seu time.
+      var isSuperAdmin = S.sessao.perfil.toLowerCase() === 'super admin';
+      var isSupervisor = S.sessao.supervisor==1 || S.sessao.supervisor===true;
+      var meuTime      = S.sessao.time || null;
+
+      if(isSuperAdmin){
+        // Admin vê todos
+        VG.usuarios = todosUsuarios;
+      } else if(isSupervisor && meuTime){
+        // Supervisor vê apenas o seu time
+        VG.usuarios = todosUsuarios.filter(function(u){
+          return (u.time||'').toLowerCase() === meuTime.toLowerCase();
+        });
+      } else {
+        // Usuário comum na visão geral: vê apenas a si mesmo
+        VG.usuarios = todosUsuarios.filter(function(u){ return u.id === S.sessao.id; });
+      }
+      // ────────────────────────────────────────────────────────
 
       // Atribuir cor a cada usuario
       VG.usuarios.forEach(function(u, i){
         VG.cores[u.id]    = VG_CORES[i % VG_CORES.length];
         VG.visiveis[u.id] = true;
       });
+
+      // Mostrar badge de escopo para o supervisor
+      vgRenderScopeBadge(isSuperAdmin, isSupervisor, meuTime);
 
       vgRenderSidebar();
       vgRenderChips();
@@ -1094,6 +1133,28 @@ function iniciarVisaoGeral(){
       vgCarregarEventos();
     })
     .finally(function(){ loading(false); });
+}
+
+// Badge informando o escopo visível do usuário atual
+function vgRenderScopeBadge(isSuperAdmin, isSupervisor, meuTime){
+  var existing = document.getElementById('vg-scope-badge');
+  if(existing) existing.remove();
+  var hdr = $('vg-period-hdr');
+  if(!hdr) return;
+  var badge = document.createElement('div');
+  badge.id = 'vg-scope-badge';
+  badge.style.cssText = 'display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:99px;margin-left:.8rem;vertical-align:middle;';
+  if(isSuperAdmin){
+    badge.style.background='#EFF6FF'; badge.style.color='var(--accent)';
+    badge.textContent = '👑 Todos os times';
+  } else if(isSupervisor && meuTime){
+    badge.style.background='#ECFDF5'; badge.style.color='var(--green)';
+    badge.textContent = '👥 Time: ' + meuTime;
+  } else {
+    badge.style.background='#F3F4F6'; badge.style.color='var(--muted)';
+    badge.textContent = '👤 Minha agenda';
+  }
+  hdr.appendChild(badge);
 }
 
 function fecharVisaoGeral(){
@@ -1251,10 +1312,12 @@ function vgRenderGrade(){
   }
 }
 
-// Carregar eventos de TODOS os usuarios
+// Carregar eventos de TODOS os usuarios visiveis (respeitando filtro de time)
 function vgCarregarEventos(){
   var dias = getDias();
   loading(true);
+  // Passa os ids dos usuarios filtrados para o backend, se a API suportar.
+  // Se não suportar, filtramos no cliente via vgRenderEventos.
   api('listarEventos', { dataInicio: fmt(dias[0]), dataFim: fmt(dias[6]) }, S.sessao.token)
     .then(function(r){
       if(r.ok){ VG.eventos = r.dados||[]; vgRenderEventos(); }
@@ -1271,9 +1334,13 @@ function vgRenderEventos(){
     if(c){ c.innerHTML=''; c.style.position='absolute'; }
   });
 
-  // Filtrar por usuarios visiveis
+  // Conjunto de ids de usuarios permitidos para este usuário (já filtrado por time em iniciarVisaoGeral)
+  var idsPermitidos = {};
+  VG.usuarios.forEach(function(u){ idsPermitidos[u.id] = true; });
+
+  // Filtrar por usuarios visiveis E pertencentes ao escopo do usuário logado
   var evs = VG.eventos.filter(function(e){
-    return VG.visiveis[e.proprietarioId];
+    return idsPermitidos[e.proprietarioId] && VG.visiveis[e.proprietarioId];
   });
 
   // Agrupar por dia
