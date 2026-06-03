@@ -43,6 +43,8 @@
   .tbtn.solid:hover{background:#EFF6FF}
   .tbtn:disabled{opacity:.5;cursor:not-allowed}
   #period-hdr{font-size:.88rem;font-weight:500;color:#fff;min-width:200px;text-align:center}
+  #tb-agenda-sel{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:7px;color:#fff;font-size:.78rem;padding:.38rem .7rem;cursor:pointer;outline:none;max-width:180px;display:none}
+  #tb-agenda-sel option{color:#1D4ED8;background:#fff}
 
   /* ── Agendamento Rápido ── */
   #aq-wrapper-outer{position:relative;flex:1;max-width:420px;min-width:0}
@@ -250,6 +252,7 @@
       </button>
     </div>
     <div id="period-hdr"></div>
+    <select id="tb-agenda-sel" onchange="trocarAgenda(this.value)" title="Filtrar agenda"></select>
     <div style="flex:1"></div>
     <div id="vg-period-hdr" style="display:none;font-size:.88rem;font-weight:600;color:#fff;flex:1;text-align:center"></div>
 
@@ -507,7 +510,7 @@ var GAS_URL = 'https://script.google.com/macros/s/AKfycbyoXVl6q5X8jC-8m2eRbT6znZ
 // ══ ESTADO ═══════════════════════════════════════════════════
 var S = {
   sessao: null, semana: 0, eventos: [], eventosGCal: [],
-  filtros: {}, corSel: '#1D4ED8', view: 'agenda',
+  filtros: {}, corSel: '#1D4ED8', view: 'agenda', agendaSel: null,
 };
 var DIAS  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 var MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -588,16 +591,62 @@ function iniciarApp(){
   var p=S.sessao.perfil.toLowerCase();
   var isSuperAdmin = p==='super admin';
   var isSupervisor = S.sessao.supervisor==1 || S.sessao.supervisor===true;
-  if(isSuperAdmin||p==='gerente') $('si-equipe').style.display='flex';
+  var isGerente = p==='gerente';
+  // Gerente e Super Admin acessam painel de equipes
+  if(isSuperAdmin||isGerente) $('si-equipe').style.display='flex';
+  // Apenas Super Admin acessa gestão de usuários
   if(isSuperAdmin) $('si-usuarios').style.display='flex';
-  // Supervisor de time também acessa a visão geral do seu time
-  if(isSuperAdmin||isSupervisor) $('si-visao').style.display='flex';
+  // Super Admin, Gerente e Supervisor de Time acessam visão geral
+  if(isSuperAdmin||isGerente||isSupervisor) $('si-visao').style.display='flex';
   construirFiltros();
+  popularFiltroAgenda();
   renderizarGrade();
   carregarEventos();
   setInterval(atualizarNowLine,60000);
-  // Scroll para hora atual ao iniciar
   setTimeout(function(){ scrollParaAgora(); }, 100);
+}
+
+// ══ FILTRO DE AGENDA (TOPBAR) ══════════════════════════════════
+function popularFiltroAgenda(){
+  var sel=$('tb-agenda-sel');
+  if(!sel) return;
+  // Limpa e adiciona opção padrão
+  sel.innerHTML='<option value="">Minha Agenda</option>';
+  var perfil=(S.sessao.perfil||'').toLowerCase().trim();
+  var isSuperAdmin=perfil==='super admin';
+  var isGerente=perfil==='gerente';
+  var isSupervisor=S.sessao.supervisor==1||S.sessao.supervisor===true;
+  // Vendedor só vê sua própria agenda — mantém select oculto
+  if(!isSuperAdmin&&!isGerente&&!isSupervisor){ sel.style.display='none'; return; }
+  var filtros={};
+  if(isSupervisor&&!isSuperAdmin&&!isGerente){
+    filtros.supervisorTime=true;
+    filtros.time=(S.sessao.time||'').toLowerCase();
+  }
+  api('listarUsuarios',filtros,S.sessao.token).then(function(r){
+    if(!r.ok) return;
+    var outros=r.dados.filter(function(u){ return String(u.id)!==String(S.sessao.id); });
+    if(!outros.length){ sel.style.display='none'; return; }
+    // Opção "Todos" para admins e gerentes
+    if(isSuperAdmin||isGerente){
+      var optTodos=document.createElement('option');
+      optTodos.value='__todos__';
+      optTodos.textContent='Todos da Equipe';
+      sel.appendChild(optTodos);
+    }
+    outros.forEach(function(u){
+      var opt=document.createElement('option');
+      opt.value=u.id;
+      opt.textContent=u.nome+(u.perfil?' ('+u.perfil+')':'');
+      sel.appendChild(opt);
+    });
+    sel.style.display='block';
+  });
+}
+
+function trocarAgenda(val){
+  S.agendaSel=val||null;
+  renderizarEventos();
 }
 
 // ══ FILTROS ═══════════════════════════════════════════════════
@@ -755,6 +804,15 @@ function renderizarEventos(){
   var todos = S.eventos.concat(gcalFiltrado);
   var filtroAtivo=Object.keys(S.filtros).length>0;
   var evs=filtroAtivo?todos.filter(function(e){return S.filtros[e.tipo];}):todos;
+  // ── Filtro de agenda (topbar) ──
+  // Sem seleção: mostra apenas eventos do próprio usuário
+  // '__todos__': mostra tudo
+  // ID específico: mostra só aquele usuário
+  if(!S.agendaSel){
+    evs=evs.filter(function(e){ return String(e.proprietarioId)===String(S.sessao.id); });
+  } else if(S.agendaSel!=='__todos__'){
+    evs=evs.filter(function(e){ return String(e.proprietarioId)===String(S.agendaSel); });
+  }
   var porDia={};
   evs.forEach(function(e){
     if(!e.dataInicio) return;
@@ -791,6 +849,7 @@ function renderizarEventos(){
       el.style.cssText='top:'+b.top+'px;height:'+b.height+'px;left:'+l+'%;width:'+(w-1.5)+'%;background:'+(b.ev.cor||'#1D4ED8')+'22;border-left:3px solid '+(b.ev.cor||'#1D4ED8')+';color:'+(b.ev.cor||'#1D4ED8')+';pointer-events:all';
       el.innerHTML='<div class="ev-title">'+esc(b.ev.titulo)+'</div>'
         +'<div class="ev-time">'+esc(b.ev.horaInicio)+' - '+esc(b.ev.horaFim)+'</div>'
+        // ── PRIVACIDADE: o nome do proprietário é exibido somente para quem tem permissão hierárquica ──
         +(b.ev.proprietarioNome&&S.sessao.perfil!=='Vendedor'?'<div class="ev-owner">'+esc(b.ev.proprietarioNome)+'</div>':'');
       el.onclick=(function(ev){return function(e){e.stopPropagation();abrirModalEvento(null,null,ev);};})(b.ev);
       colEl.appendChild(el);
@@ -860,8 +919,15 @@ function abrirModalEvento(data,hora,ev){
   buildColorPicker();
   $('m-ev-title').textContent=ev?'Editar Evento':'Novo Evento';
   $('ev-del-btn').style.display=ev?'':'none';
-  var pode=!ev||ev.proprietarioId===S.sessao.id||S.sessao.perfil==='Super Admin'||S.sessao.perfil==='Gerente';
-  $('ev-save-btn').style.display=pode?'':'none';
+  // ── ISOLAMENTO: vendedor só pode salvar/editar seus próprios eventos ──
+  // O servidor bloqueia no back-end, mas o front-end já ocultará o botão Salvar
+  // quando o evento pertence a outro usuário (exceto se for admin/gerente/supervisor).
+  var perfil = (S.sessao.perfil||'').toLowerCase();
+  var isSuperAdmin = perfil==='super admin';
+  var isGerente = perfil==='gerente';
+  var isSupervisor = S.sessao.supervisor==1 || S.sessao.supervisor===true;
+  var podeEditar = !ev || ev.proprietarioId===S.sessao.id || isSuperAdmin || isGerente || isSupervisor;
+  $('ev-save-btn').style.display=podeEditar?'':'none';
   abrirOverlay('m-evento');
   setTimeout(function(){$('ev-titulo').focus();},100);
 }
@@ -974,6 +1040,9 @@ function excluirUsuario(id){
 function abrirModalGCal(){
   closeSidebar();
   abrirOverlay('m-gcal');
+  // ── PRIVACIDADE: Calendar_ID e Cal_Sync são exclusivos do próprio usuário ──
+  // Estes dados NÃO vêm de listarUsuarios; vêm apenas da sessão do próprio usuário,
+  // que é preenchida no login com os dados do token validado no servidor.
   var calId   = S.sessao.calendarId||'';
   var calSync = S.sessao.calSync||false;
   $('gcal-id-input').value = calId;
