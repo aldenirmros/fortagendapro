@@ -573,6 +573,7 @@ function fazerLogin(){
 function fazerLogout(){
   if(S.sessao&&S.sessao.token) api('logout',{},S.sessao.token).catch(function(){});
   S.sessao=null;
+  S.eventosGCal=[];
   sessionStorage.removeItem('fap_sessao');
   $('app').style.display='none';
   $('login-screen').style.display='flex';
@@ -646,7 +647,8 @@ function popularFiltroAgenda(){
 
 function trocarAgenda(val){
   S.agendaSel=val||null;
-  renderizarEventos();
+  S.eventosGCal=[];
+  carregarEventos();
 }
 
 // ══ FILTROS ═══════════════════════════════════════════════════
@@ -736,9 +738,10 @@ function carregarEventos(){
   loading(true);
   var di=fmt(dias[0]), df=fmt(dias[6]);
 
-  // Limpa cache GCal antigo para a semana atual
+  // Limpa cache GCal antigo para a semana atual (apenas do próprio usuário)
   S.eventosGCal = (S.eventosGCal||[]).filter(function(e){
-    return e.dataInicio>=di && e.dataInicio<=df;
+    return e.dataInicio>=di && e.dataInicio<=df
+      && String(e.proprietarioId)===String(S.sessao.id);
   });
 
   api('listarEventos',{dataInicio:di,dataFim:df},S.sessao.token)
