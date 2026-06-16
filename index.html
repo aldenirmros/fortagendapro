@@ -827,7 +827,7 @@
 
 <script>
 // ══ CONFIG ════════════════════════════════════════════════════
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbyoXVl6q5X8jC-8m2eRbT6znZnvqlcEk7qQTQ_JBndtbUc1TqkY2xpA7cPCayK34cYe/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbzR9YJyi3Kfn04ajwgBiqSCCjbNPSvXBMZW56MR1YYb1NcxiP7tllEeuK8gDAWwgkuh/exec';
 
 // ══ ESTADO ═══════════════════════════════════════════════════
 var S = {
@@ -959,8 +959,11 @@ function popularFiltroAgenda(){
     }
     outros.forEach(function(u){
       var opt=document.createElement('option');
-      opt.value=u.id;
-      opt.textContent=u.nome+(u.perfil?' ('+u.perfil+')':'');
+      // ── v6.3: fallbacks seguros para id, nome e perfil ──
+      opt.value = String(u.id || '');
+      var label = String(u.nome || u.usuario || 'Usuário');
+      var pf    = String(u.perfil || '');
+      opt.textContent = label + (pf ? ' ('+pf+')' : '');
       sel.appendChild(opt);
     });
     sel.style.display='block';
@@ -1307,17 +1310,27 @@ function carregarListaUsuarios(){
       var usuarios=r.dados||[];
       if(!usuarios.length){$('users-list').innerHTML='<div style="text-align:center;padding:1rem;color:var(--muted);font-size:.83rem">Nenhum usuario cadastrado</div>';return;}
       var perfilBadge={'Super Admin':'badge-blue','Gerente':'badge-yellow','Vendedor':'badge-green'};
-      var html='<table class="utab"><thead><tr><th>Usuario</th><th>Nome</th><th>Perfil</th><th>Time</th><th>Supervisor</th><th>Acoes</th></tr></thead><tbody>';
+      var html='<table class="utab"><thead><tr><th>Usuário</th><th>Nome</th><th>Perfil</th><th>Time</th><th>Supervisor</th><th>Ações</th></tr></thead><tbody>';
       usuarios.forEach(function(u){
-        var bClass=perfilBadge[u.perfil]||'badge-gray';
-        var supLabel=u.supervisor==1||u.supervisor===true?'<span style="font-size:.7rem;color:var(--accent);font-weight:700">✓ Sim</span>':'<span style="font-size:.7rem;color:var(--muted)">Não</span>';
+        // ── v6.3: fallbacks seguros para campos que podem vir vazios/nulos ──
+        var uId       = String(u.id      || '');
+        var uUsuario  = String(u.usuario || '');
+        var uNome     = String(u.nome    || u.usuario || 'Usuário');
+        var uPerfil   = String(u.perfil  || '—');
+        var uTime     = String(u.time    || '');
+        var uSup      = u.supervisor === true || u.supervisor === 1;
+        var bClass    = perfilBadge[uPerfil] || 'badge-gray';
+        var supLabel  = uSup
+          ? '<span style="font-size:.7rem;color:var(--accent);font-weight:700">✓ Sim</span>'
+          : '<span style="font-size:.7rem;color:var(--muted)">Não</span>';
+        var eSelf     = uId === String(S.sessao.id || '');
         html+='<tr>'
-          +'<td><strong>'+esc(u.usuario)+'</strong></td>'
-          +'<td>'+esc(u.nome)+'</td>'
-          +'<td><span class="badge '+bClass+'">'+esc(u.perfil)+'</span></td>'
-          +'<td>'+(u.time?'<span style="font-size:.73rem;background:#EFF6FF;color:var(--accent);padding:.15rem .4rem;border-radius:5px;font-weight:600">'+esc(u.time)+'</span>':'<span style="color:var(--muted);font-size:.73rem">—</span>')+'</td>'
+          +'<td><strong>'+esc(uUsuario)+'</strong></td>'
+          +'<td>'+esc(uNome)+'</td>'
+          +'<td><span class="badge '+bClass+'">'+esc(uPerfil)+'</span></td>'
+          +'<td>'+(uTime?'<span style="font-size:.73rem;background:#EFF6FF;color:var(--accent);padding:.15rem .4rem;border-radius:5px;font-weight:600">'+esc(uTime)+'</span>':'<span style="color:var(--muted);font-size:.73rem">—</span>')+'</td>'
           +'<td style="text-align:center">'+supLabel+'</td>'
-          +'<td>'+(u.id!==S.sessao.id?'<button onclick="excluirUsuario(\''+u.id+'\')" style="font-size:.72rem;color:var(--red);background:none;border:1px solid #FECACA;border-radius:5px;padding:.15rem .4rem;cursor:pointer">Remover</button>':'<span style="font-size:.72rem;color:var(--muted)">Voce</span>')+'</td>'
+          +'<td>'+(eSelf?'<span style="font-size:.72rem;color:var(--muted)">Você</span>':'<button onclick="excluirUsuario(\''+uId+'\')" style="font-size:.72rem;color:var(--red);background:none;border:1px solid #FECACA;border-radius:5px;padding:.15rem .4rem;cursor:pointer">Remover</button>')+'</td>'
           +'</tr>';
       });
       html+='</tbody></table>';
@@ -1507,14 +1520,14 @@ function iniciarVisaoGeral(){
         });
       } else {
         // Usuário comum na visão geral: vê apenas a si mesmo
-        VG.usuarios = todosUsuarios.filter(function(u){ return u.id === S.sessao.id; });
+        VG.usuarios = todosUsuarios.filter(function(u){ return String(u.id||'') === String(S.sessao.id||''); });
       }
       // ────────────────────────────────────────────────────────
 
-      // Atribuir cor a cada usuario
+      // Atribuir cor a cada usuario (v6.3: String() seguro nas chaves)
       VG.usuarios.forEach(function(u, i){
-        VG.cores[u.id]    = VG_CORES[i % VG_CORES.length];
-        VG.visiveis[u.id] = true;
+        VG.cores[String(u.id||'')]    = VG_CORES[i % VG_CORES.length];
+        VG.visiveis[String(u.id||'')] = true;
       });
 
       // Mostrar badge de escopo para o supervisor
@@ -1564,19 +1577,24 @@ function vgRenderSidebar(){
   var el = $('vg-sidebar-users');
   el.innerHTML = '<div style="font-size:.68rem;font-weight:700;color:var(--muted);letter-spacing:.06em;padding:.25rem .4rem .5rem">VENDEDORES</div>';
   VG.usuarios.forEach(function(u){
-    var cor = VG.cores[u.id];
-    var ini = (u.nome||u.usuario).split(' ').map(function(p){return p[0];}).join('').slice(0,2).toUpperCase();
-    var btn = document.createElement('button');
-    btn.className = 'vg-u-item' + (VG.visiveis[u.id] ? '' : ' hide-ev');
-    btn.id = 'vg-u-'+u.id;
+    // ── v6.3: fallbacks seguros para campos do usuário na visão geral ──
+    var uId  = String(u.id || '');
+    var cor  = VG.cores[uId] || '#475569';
+    var vis  = !!VG.visiveis[uId];
+    var uNome= String(u.nome || u.usuario || 'Usuário');
+    var uPf  = String(u.perfil || '');
+    var ini  = uNome.split(' ').map(function(p){ return p[0] || ''; }).join('').slice(0,2).toUpperCase() || '??';
+    var btn  = document.createElement('button');
+    btn.className = 'vg-u-item' + (vis ? '' : ' hide-ev');
+    btn.id = 'vg-u-'+uId;
     btn.innerHTML =
       '<div class="vg-u-avatar" style="background:'+cor+'">'+esc(ini)+'</div>'
       +'<div style="flex:1;text-align:left;min-width:0">'
-        +'<div style="font-size:.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(u.nome||u.usuario)+'</div>'
-        +'<div style="font-size:.65rem;color:var(--muted)">'+esc(u.perfil)+'</div>'
+        +'<div style="font-size:.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(uNome)+'</div>'
+        +'<div style="font-size:.65rem;color:var(--muted)">'+esc(uPf)+'</div>'
       +'</div>'
-      +'<div style="width:10px;height:10px;border-radius:50%;background:'+(VG.visiveis[u.id]?cor:'#CBD5E1')+';flex-shrink:0" id="vg-dot-'+u.id+'"></div>';
-    btn.onclick = (function(uid){ return function(){ vgToggleUsuario(uid); }; })(u.id);
+      +'<div style="width:10px;height:10px;border-radius:50%;background:'+(vis?cor:'#CBD5E1')+';flex-shrink:0" id="vg-dot-'+uId+'"></div>';
+    btn.onclick = (function(uid){ return function(){ vgToggleUsuario(uid); }; })(uId);
     el.appendChild(btn);
   });
 }
@@ -1586,16 +1604,19 @@ function vgRenderChips(){
   var bar = $('vg-users-bar');
   bar.innerHTML = '';
   VG.usuarios.forEach(function(u){
-    var cor = VG.cores[u.id];
-    var vis = VG.visiveis[u.id];
-    var chip = document.createElement('button');
+    // ── v6.3: fallbacks seguros nos chips de visão geral ──
+    var uId   = String(u.id || '');
+    var cor   = VG.cores[uId]    || '#475569';
+    var vis   = !!VG.visiveis[uId];
+    var uNome = String(u.nome || u.usuario || 'Usuário');
+    var chip  = document.createElement('button');
     chip.className = 'vg-user-chip' + (vis ? ' active' : '');
-    chip.id = 'chip-'+u.id;
-    chip.style.background = vis ? cor : 'var(--surface)';
+    chip.id = 'chip-'+uId;
+    chip.style.background  = vis ? cor : 'var(--surface)';
     chip.style.borderColor = cor;
-    chip.style.color = vis ? '#fff' : cor;
-    chip.innerHTML = '<span class="chip-dot" style="background:'+(vis?'#fff':cor)+'"></span>'+esc(u.nome||u.usuario);
-    chip.onclick = (function(uid){ return function(){ vgToggleUsuario(uid); }; })(u.id);
+    chip.style.color       = vis ? '#fff' : cor;
+    chip.innerHTML = '<span class="chip-dot" style="background:'+(vis?'#fff':cor)+'"></span>'+esc(uNome);
+    chip.onclick = (function(uid){ return function(){ vgToggleUsuario(uid); }; })(uId);
     bar.appendChild(chip);
   });
 }
@@ -1605,10 +1626,13 @@ function vgRenderLegenda(){
   var el = $('vg-legenda-items');
   el.innerHTML = '';
   VG.usuarios.forEach(function(u){
-    var cor = VG.cores[u.id];
-    var item = document.createElement('div');
+    // ── v6.3: fallbacks seguros na legenda da visão geral ──
+    var uId   = String(u.id || '');
+    var cor   = VG.cores[uId] || '#475569';
+    var uNome = String(u.nome || u.usuario || 'Usuário');
+    var item  = document.createElement('div');
     item.style.cssText = 'display:flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:500;color:var(--muted)';
-    item.innerHTML = '<div style="width:12px;height:12px;border-radius:3px;background:'+cor+'"></div>'+esc(u.nome||u.usuario);
+    item.innerHTML = '<div style="width:12px;height:12px;border-radius:3px;background:'+cor+'"></div>'+esc(uNome);
     el.appendChild(item);
   });
 }
@@ -1616,29 +1640,31 @@ function vgRenderLegenda(){
 // Toggle visibilidade de um usuario
 function vgToggleUsuario(uid){
   VG.visiveis[uid] = !VG.visiveis[uid];
-  // Atualizar chip
+  // ── v6.3: fallback seguro para cor ──
   var chip = $('chip-'+uid);
-  var cor  = VG.cores[uid];
-  var vis  = VG.visiveis[uid];
+  var cor  = VG.cores[uid] || '#475569';
+  var vis  = !!VG.visiveis[uid];
   if(chip){
     chip.className = 'vg-user-chip'+(vis?' active':'');
     chip.style.background = vis ? cor : 'var(--surface)';
     chip.style.color = vis ? '#fff' : cor;
-    chip.querySelector('.chip-dot').style.background = vis ? '#fff' : cor;
+    var dot = chip.querySelector('.chip-dot');
+    if(dot) dot.style.background = vis ? '#fff' : cor;
   }
   // Atualizar sidebar
   var li = $('vg-u-'+uid);
   if(li){
     li.className = 'vg-u-item'+(vis?'':' hide-ev');
-    $('vg-dot-'+uid).style.background = vis ? cor : '#CBD5E1';
+    var dotEl = $('vg-dot-'+uid);
+    if(dotEl) dotEl.style.background = vis ? cor : '#CBD5E1';
   }
   vgRenderEventos();
 }
 
 // Toggle todos
 function vgToggleTodos(){
-  var todosVisiveis = VG.usuarios.every(function(u){ return VG.visiveis[u.id]; });
-  VG.usuarios.forEach(function(u){ VG.visiveis[u.id] = !todosVisiveis; });
+  var todosVisiveis = VG.usuarios.every(function(u){ return !!VG.visiveis[String(u.id||'')]; });
+  VG.usuarios.forEach(function(u){ VG.visiveis[String(u.id||'')] = !todosVisiveis; });
   $('vg-todos-btn').textContent = todosVisiveis ? 'Mostrar todos' : 'Ocultar todos';
   vgRenderSidebar();
   vgRenderChips();
@@ -1730,11 +1756,13 @@ function vgRenderEventos(){
 
   // Conjunto de ids de usuarios permitidos para este usuário (já filtrado por time em iniciarVisaoGeral)
   var idsPermitidos = {};
-  VG.usuarios.forEach(function(u){ idsPermitidos[u.id] = true; });
+  // ── v6.3: String() nas chaves para consistência com VG.cores/VG.visiveis ──
+  VG.usuarios.forEach(function(u){ idsPermitidos[String(u.id||'')] = true; });
 
   // Filtrar por usuarios visiveis E pertencentes ao escopo do usuário logado
   var evs = VG.eventos.filter(function(e){
-    return idsPermitidos[e.proprietarioId] && VG.visiveis[e.proprietarioId];
+    var pid = String(e.proprietarioId||'');
+    return idsPermitidos[pid] && !!VG.visiveis[pid];
   });
 
   // Agrupar por dia
@@ -2322,13 +2350,19 @@ function mobCarregarEquipe(){
     var lista=$('mob-users-list'); lista.innerHTML='';
     if(!r.ok){lista.innerHTML='<div class="mob-empty">'+esc(r.msg)+'</div>';return;}
     r.dados.forEach(function(u,i){
-      var cor=CORES_TEAM[i%CORES_TEAM.length];
-      var ini=(u.nome||u.usuario||'?').split(' ').map(function(p){return p[0];}).join('').slice(0,2).toUpperCase();
-      var cnt=S.eventos.filter(function(e){return String(e.proprietarioId)===String(u.id);}).length;
-      var card=document.createElement('div'); card.className='mob-user-card';
+      // ── v6.3: fallbacks seguros para todos os campos do usuário ──
+      var uId   = String(u.id      || '');
+      var uNome = String(u.nome    || u.usuario || 'Usuário');
+      var uPf   = String(u.perfil  || '');
+      var uTime = String(u.time    || '');
+      var uSup  = u.supervisor === true || u.supervisor === 1;
+      var cor   = CORES_TEAM[i % CORES_TEAM.length];
+      var ini   = uNome.split(' ').map(function(p){ return p[0] || ''; }).join('').slice(0,2).toUpperCase() || '??';
+      var cnt   = S.eventos.filter(function(e){ return String(e.proprietarioId) === uId; }).length;
+      var card  = document.createElement('div'); card.className='mob-user-card';
       card.innerHTML='<div class="mob-ua" style="background:'+cor+'">'+ini+'</div>'
-        +'<div class="mob-ui"><div class="mob-un">'+esc(u.nome||u.usuario)+'</div>'
-        +'<div class="mob-us">'+esc(u.perfil)+(u.time?' · '+esc(u.time):'')+(u.supervisor?' · Supervisor':'')+'</div></div>'
+        +'<div class="mob-ui"><div class="mob-un">'+esc(uNome)+'</div>'
+        +'<div class="mob-us">'+esc(uPf)+(uTime?' · '+esc(uTime):'')+(uSup?' · Supervisor':'')+'</div></div>'
         +'<div class="mob-uc">'+cnt+' ev.</div>';
       card.onclick=(function(uid){return function(){
         S.agendaSel=uid;
@@ -2336,7 +2370,7 @@ function mobCarregarEquipe(){
         S.eventosGCal=[];
         carregarEventos();
         mobNavPara('agenda');
-      };})(u.id);
+      };})(uId);
       lista.appendChild(card);
     });
   });
